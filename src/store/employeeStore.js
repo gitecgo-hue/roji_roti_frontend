@@ -280,8 +280,26 @@ const useEmployeeStore = create((set, get) => ({
             const payload = unwrapPayload(response.data);
             const nextUser = payload?.user ?? payload?.employee ?? payload?.data ?? payload;
             const mergedUser = nextUser && typeof nextUser === 'object'
-                ? { ...get().user, ...nextUser, availability: { ...(get().user?.availability ?? {}), ...(nextUser.availability ?? {}), is_available: isAvailable } }
-                : { ...(get().user ?? {}), availability: { ...(get().user?.availability ?? {}), is_available: isAvailable } };
+                ? {
+                    ...get().user,
+                    ...nextUser,
+                    is_available: isAvailable,
+                    notice_period_days: nextUser.notice_period_days ?? get().user?.notice_period_days ?? get().user?.availability?.notice_period_days,
+                    availability: {
+                        ...(get().user?.availability ?? {}),
+                        ...(nextUser.availability ?? {}),
+                        is_available: isAvailable,
+                        notice_period_days: nextUser.notice_period_days ?? get().user?.notice_period_days ?? get().user?.availability?.notice_period_days,
+                    }
+                }
+                : {
+                    ...(get().user ?? {}),
+                    is_available: isAvailable,
+                    availability: {
+                        ...(get().user?.availability ?? {}),
+                        is_available: isAvailable,
+                    }
+                };
             set({
                 user: mergedUser,
                 isLoading: false,

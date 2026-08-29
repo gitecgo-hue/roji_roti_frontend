@@ -142,6 +142,7 @@ export default function Dashboard() {
     skills: "",
     languages: "",
   });
+  const [localAvailable, setLocalAvailable] = useState(false);
   const [locationSuggestions, setLocationSuggestions] = useState<Array<{ label: string; value: string }>>([]);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [isLocationLoading, setIsLocationLoading] = useState(false);
@@ -205,7 +206,9 @@ export default function Dashboard() {
 
   const profileEducation = Array.isArray(user?.education) && user.education.length > 0 ? user.education.map((item: any) => item.degree ?? item.qualification ?? item.course ?? item.name ?? item.level ?? String(item)).join(", ") : "Not specified";
   const profileExperience = user?.total_experience ?? "Not specified";
-  const profileSkills = Array.isArray(user?.skills) ? user.skills.map(normalizeSkill).filter(Boolean) : [];
+  const profileSkills: string[] = Array.isArray(user?.skills)
+    ? user.skills.map((skill: any) => normalizeSkill(skill)).filter(Boolean)
+    : [];
 
   const formatEducationTitle = (item: any) => {
     if (!item) return "Education";
@@ -231,8 +234,11 @@ export default function Dashboard() {
   const educationItems = Array.isArray(user?.education) ? user.education : [];
   const documents = Array.isArray(user?.documents) ? user.documents : [];
   const salaryExpectation = user?.expected_salary ?? "Not specified";
-  const availability = user?.availability?.is_available ? "Available" : "Not available";
-  const noticePeriod = user?.availability?.notice_period_days != null ? `${user.availability.notice_period_days} days` : "Not specified";
+  const _rawAvailable = user?.is_available ?? user?.availability?.is_available;
+  const isAvailableFlag = (_rawAvailable === true) || (typeof _rawAvailable === 'string' && _rawAvailable.toLowerCase() === 'true') || Number(_rawAvailable) === 1;
+  const availability = isAvailableFlag ? "Available" : "Not available";
+  const noticePeriodValue = user?.notice_period_days ?? user?.availability?.notice_period_days;
+  const noticePeriod = noticePeriodValue != null ? `${noticePeriodValue} days` : "Not specified";
   const preferences = user?.preferences ?? { job_types: [], locations: [], remote_ok: false };
   const profileJobTypes = Array.isArray(preferences.job_types) && preferences.job_types.length > 0 ? preferences.job_types.join(", ") : "Not specified";
   const profileLocations = Array.isArray(preferences.locations) && preferences.locations.length > 0 ? preferences.locations.join(", ") : "Not specified";
@@ -257,7 +263,6 @@ export default function Dashboard() {
     educationItems.length === 0 && "Add education history",
     profileSkills.length === 0 && "Add skills",
     salaryExpectation === "Not specified" && "Add salary expectations",
-    user?.availability == null && "Update your availability",
     profileJobTypes === "Not specified" && "Set preferred job types",
     profileLocations === "Not specified" && "Set preferred locations",
     // check hasResume (resume URL or uploaded documents) instead of documents array only
@@ -265,6 +270,7 @@ export default function Dashboard() {
   ].filter(Boolean) as string[];
 
   const syncProfileForm = () => {
+    setLocalAvailable(Boolean(isAvailableFlag));
     setProfileForm({
       name: profileName,
       title: profileTitle,
@@ -274,12 +280,12 @@ export default function Dashboard() {
       gender: user?.gender ?? "",
       summary: user?.summary ?? "",
       salaryExpectation: user?.expected_salary ?? "",
-      isAvailable: Boolean(user?.availability?.is_available),
-      noticePeriod: user?.availability?.notice_period_days?.toString() ?? "",
+      isAvailable: isAvailableFlag,
+      noticePeriod: user?.notice_period_days?.toString() ?? user?.availability?.notice_period_days?.toString() ?? "",
       jobTypes: Array.isArray(preferences.job_types) ? preferences.job_types.join(", ") : "",
       locations: Array.isArray(preferences.locations) ? preferences.locations.join(", ") : "",
       remoteOk: Boolean(preferences.remote_ok),
-      skills: profileSkills.filter((skill) => !presetSkillSet.has(skill)).join(", "),
+      skills: profileSkills.filter((skill: string) => !presetSkillSet.has(skill)).join(", "),
       languages: Array.isArray(user?.languages) ? user.languages.join(", ") : user?.languages ?? "",
     });
     setSelectedJobTypes(Array.isArray(preferences.job_types) ? preferences.job_types : []);
@@ -312,6 +318,8 @@ export default function Dashboard() {
   useEffect(() => {
     syncProfileForm();
   }, [user, dashboard]);
+
+
 
   const openProfileEditor = (
     section:
@@ -1854,22 +1862,27 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                           <Switch
-                            checked={profileForm.isAvailable}
+                            checked={localAvailable}
                             onCheckedChange={async (checked) => {
+                              // optimistic local update
+                              setLocalAvailable(Boolean(checked));
+                              updateProfileForm("isAvailable", Boolean(checked));
                               try {
                                 await updateAvailability(checked);
-                                updateProfileForm("isAvailable", checked);
+                                // refresh canonical state from server
+                                await getEmployee();
+                                await getDashboard();
                               } catch (error) {
                                 console.error("Failed to update availability", error);
-                                updateProfileForm("isAvailable", !checked);
+                                // revert both local and form state
+                                setLocalAvailable(!Boolean(checked));
+                                updateProfileForm("isAvailable", !Boolean(checked));
                               }
                             }}
                             aria-label="Availability toggle"
                           />
                           <div>
-                            <p className="text-sm text-white">
-                              {profileForm.isAvailable ? "Available" : "Not available"}
-                            </p>
+                            <p className="text-sm text-white">{availability}</p>
                           </div>
                         </div>
                       
